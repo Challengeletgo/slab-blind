@@ -19,7 +19,6 @@ const TEMPLATE={
 
 /* ---------- 서버 연결 (Supabase) ---------- */
 const CFG=window.SLAB_CONFIG||{};
-const AI=!!CFG.RECOGNITION; // Claude API 키를 넣었을 때만 true
 const sb=(CFG.SUPABASE_URL&&CFG.SUPABASE_ANON_KEY&&window.supabase)?window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY):null;
 const imgUrl=p=>`${CFG.SUPABASE_URL}/storage/v1/object/public/cards/${p}`;
 function playerId(){let id=null;try{id=localStorage.getItem('slab_pid')}catch{}
@@ -223,80 +222,31 @@ function gradeOptions(company){
   for(const[v,l]of opts)s.insertAdjacentHTML('beforeend',`<option value="${v}">${l}</option>`);
   if([...s.options].some(o=>o.value===prev))s.value=prev;
 }
-COMPANIES.forEach(c=>{const b=document.createElement('button');b.textContent=c;b.type='button';b.setAttribute('aria-pressed','false');b.onclick=()=>{setCompany(c);if(!up.recognized)applyTemplate(c)};$('coSeg').appendChild(b)});
+COMPANIES.forEach(c=>{const b=document.createElement('button');b.textContent=c;b.type='button';b.setAttribute('aria-pressed','false');b.onclick=()=>{setCompany(c);applyTemplate(c)};$('coSeg').appendChild(b)});
 function setCompany(c){up.company=c;for(const b of $('coSeg').children)b.setAttribute('aria-pressed',b.textContent===c);gradeOptions(c);validate()}
 function renderTiers(){const t=$('tierSeg');t.innerHTML='';
   LEVELS.forEach((L,i)=>{const b=document.createElement('button');b.type='button';b.setAttribute('aria-pressed',up.tier===i);
-    b.innerHTML=`<span>${L.name}용<small>${L.how}</small></span>${up.rec===i?`<span class="rec">${AI?'AI 추천':'추천'}</span>`:''}`;b.onclick=()=>{up.tier=i;up.tierPicked=true;renderTiers();validate()};t.appendChild(b)})}
+    b.innerHTML=`<span>${L.name}용<small>${L.how}</small></span>${up.rec===i?'<span class="rec">추천</span>':''}`;b.onclick=()=>{up.tier=i;up.tierPicked=true;renderTiers();validate()};t.appendChild(b)})}
 function applyTemplate(c){const t=TEMPLATE[c];
-  // 자동으로 찾은 QR·바코드가 있으면 그 위치를 쓰고, 없으면 회사별 기본 위치를 씁니다.
-  const fc=up.f.codes||[],bc=up.b.codes||[];
-  up.f.boxes=[{t:'g',b:[...t.g]},...t.mf.map(b=>({t:'m',b:[...b]})),...fc.map(b=>({t:'m',b}))];
-  up.b.boxes=[...(bc.length?t.mb.slice(1):t.mb).map(b=>({t:'m',b:[...b]})),...bc.map(b=>({t:'m',b}))];drawEditor()}
-function validate(){const ok=up&&up.company&&$('gradeSel').value&&up.tier!=null&&$('own').checked&&up.f.boxes.some(b=>b.t==='g')&&!!sb;$('submitBtn').disabled=!ok}
-$('gradeSel').onchange=()=>{if(!AI&&up){const v=$('gradeSel').value;if(v){const g=v==='P10'?10:parseFloat(v);
-  up.rec=(v==='P10'||!Number.isInteger(g))?2:g>=9?1:0;if(!up.tierPicked)up.tier=up.rec;renderTiers()}}validate()};$('own').onchange=validate;
+  up.f.boxes=[{t:'g',b:[...t.g]},...t.mf.map(b=>({t:'m',b:[...b]}))];up.b.boxes=t.mb.map(b=>({t:'m',b:[...b]}));drawEditor();guide()}
+function validate(){const ok=up&&up.company&&$('gradeSel').value&&up.tier!=null&&$('own').checked&&up.f.boxes.some(b=>b.t==='g')&&$('maskOk').checked&&!!sb;$('submitBtn').disabled=!ok}
+$('gradeSel').onchange=()=>{if(up){const v=$('gradeSel').value;if(v){const g=v==='P10'?10:parseFloat(v);
+  up.rec=(v==='P10'||!Number.isInteger(g))?2:g>=9?1:0;if(!up.tierPicked)up.tier=up.rec;renderTiers()}}validate()};$('own').onchange=validate;$('maskOk').onchange=validate;
 $('cancelBtn').onclick=()=>{up=null;files={f:null,b:null};$('dropF').innerHTML='<b>앞면</b><span style="font-size:13px;color:var(--muted)">라벨 등급이 보이게</span>';$('dropB').innerHTML='<b>뒷면</b><span style="font-size:13px;color:var(--muted)">같은 슬랩의 뒷면</span>';$('nextUp').disabled=true;$('upStep2').hidden=true;$('upStep1').hidden=false};
 async function toSide(file){const img=await loadImg(URL.createObjectURL(file));const c=document.createElement('canvas');const sc=Math.min(1,1400/img.naturalHeight);
   c.width=Math.round(img.naturalWidth*sc);c.height=Math.round(img.naturalHeight*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);return{canvas:c,boxes:[]}}
 $('nextUp').onclick=async()=>{
-  try{up={f:await toSide(files.f),b:await toSide(files.b),side:'f',company:null,tier:null,rec:null,cond:'',recognized:false,tierPicked:false}}catch{return}
-  $('upStep1').hidden=true;$('upStep2').hidden=false;$('submitMsg').hidden=true;$('own').checked=false;$('nameIn').value='';$('condTxt').innerHTML=AI?'':'<input type="text" id="condIn" maxlength="120" placeholder="내가 본 상태 (선택) 예: 왼쪽 위 모서리에 작은 흰 점" style="margin-top:4px">';
-  for(const b of $('coSeg').children)b.setAttribute('aria-pressed','false');gradeOptions(null);renderTiers();setEditSide('f');validate();recognize();
+  try{up={f:await toSide(files.f),b:await toSide(files.b),side:'f',company:null,tier:null,rec:null,tierPicked:false}}catch{return}
+  $('upStep1').hidden=true;$('upStep2').hidden=false;$('submitMsg').hidden=true;$('own').checked=false;$('maskOk').checked=false;$('nameIn').value='';$('condTxt').innerHTML='<input type="text" id="condIn" maxlength="120" placeholder="내가 본 상태 (선택) 예: 왼쪽 위 모서리에 작은 흰 점" style="margin-top:4px">';
+  for(const b of $('coSeg').children)b.setAttribute('aria-pressed','false');gradeOptions(null);renderTiers();setEditSide('f');validate();guide();
 };
 function setEditSide(s){up.side=s;$('eF').setAttribute('aria-pressed',s==='f');$('eB').setAttribute('aria-pressed',s==='b');drawEditor()}
 $('eF').onclick=()=>setEditSide('f');$('eB').onclick=()=>setEditSide('b');
 function alertMsg(t){const m=$('recog');m.className='status err';m.textContent=t}
-function b64Of(c){const s=document.createElement('canvas');const k=Math.min(1,1100/c.height);s.width=Math.round(c.width*k);s.height=Math.round(c.height*k);s.getContext('2d').drawImage(c,0,0,s.width,s.height);return s.toDataURL('image/jpeg',.85).split(',')[1]}
-/* ---------- 무료 자동 감지: QR·바코드 (API 키 필요 없음) ---------- */
-let jsqrP=null;
-function loadJsQR(){if(window.jsQR)return Promise.resolve();if(!jsqrP)jsqrP=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';s.onload=res;s.onerror=rej;document.head.appendChild(s)});return jsqrP}
-async function findCodes(c){
-  const W=c.width,H=c.height,out=[],pad=.015;
-  const push=(x0,y0,x1,y1)=>{const b=[Math.max(0,x0/W-pad),Math.max(0,y0/H-pad),Math.min(1,x1/W+pad),Math.min(1,y1/H+pad)];if(!out.some(o=>Math.abs(o[0]-b[0])<.03&&Math.abs(o[1]-b[1])<.03))out.push(b)};
-  if('BarcodeDetector' in window){try{const d=new BarcodeDetector();for(const r of await d.detect(c)){const bb=r.boundingBox;push(bb.x,bb.y,bb.x+bb.width,bb.y+bb.height)}}catch{}}
-  try{await loadJsQR();
-    // 라벨이 있는 위쪽 30%만 크게 확대해서 찾습니다.
-    const h=Math.round(H*.3),t=document.createElement('canvas'),k=Math.min(2,1600/W);t.width=Math.round(W*k);t.height=Math.round(h*k);
-    const x=t.getContext('2d',{willReadFrequently:true});x.drawImage(c,0,0,W,h,0,0,t.width,t.height);
-    const q=window.jsQR(x.getImageData(0,0,t.width,t.height).data,t.width,t.height,{inversionAttempts:'attemptBoth'});
-    if(q){const p=q.location,xs=[p.topLeftCorner.x,p.topRightCorner.x,p.bottomLeftCorner.x,p.bottomRightCorner.x].map(v=>v/k),ys=[p.topLeftCorner.y,p.topRightCorner.y,p.bottomLeftCorner.y,p.bottomRightCorner.y].map(v=>v/k);push(Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys))}
-  }catch{}
-  return out;
-}
-async function localDetect(){
-  const m=$('recog');m.className='status';m.textContent='QR·바코드를 찾는 중…';
-  up.f.codes=await findCodes(up.f.canvas);up.b.codes=await findCodes(up.b.canvas);
-  const n=up.f.codes.length+up.b.codes.length;
-  m.textContent=(n?`QR·바코드 ${n}개를 찾아 모자이크 칸을 놓았어요. `:'')+'회사를 고르면 등급 가림 칸과 인증번호 모자이크 칸이 기본 위치에 놓여요. 라벨에 맞게 끌어서 맞춰 주세요.';
-  up.b.boxes=up.b.codes.map(b=>({t:'m',b}));up.f.boxes=up.f.codes.map(b=>({t:'m',b}));drawEditor();
-}
-async function recognize(){
-  if(!AI)return localDetect();
-  const m=$('recog');m.className='status';m.textContent='라벨과 카드 상태를 읽는 중…';
-  const manual='회사, 등급, 단계를 직접 고르면 기본 위치에 가림 칸이 놓여요. 라벨에 맞게 옮겨 주세요.';
-  try{
-    const {data:r,error}=await sb.functions.invoke('recognize',{body:{front:b64Of(up.f.canvas),back:b64Of(up.b.canvas)}});
-    if(error||!r||r.error){const code=r?.error;alertMsg((code==='rate_limited'?'자동 인식을 너무 많이 썼어요. 잠시 뒤 다시 해 주세요. ':code==='recognition_disabled'?'자동 인식이 꺼져 있어요. ':'자동 인식에 실패했어요. ')+manual);return}
-    if(!r.isSlab){alertMsg('그레이딩 슬랩 사진으로 보이지 않아요. 라벨이 보이게 다시 찍어 주세요.');return}
-    if(!COMPANIES.includes(r.company)){alertMsg(`${r.company==='OTHER'?'이 회사':r.company} 슬랩은 아직 받지 않아요. PSA, CGC, BRG만 올릴 수 있어요.`);return}
-    up.recognized=true;setCompany(r.company);
-    const ok=b=>Array.isArray(b)&&b.length===4&&b.every(n=>typeof n==='number'&&n>=0&&n<=1)&&b[2]>b[0]&&b[3]>b[1];
-    const pad=(b,p)=>[Math.max(0,b[0]-p),Math.max(0,b[1]-p*.6),Math.min(1,b[2]+p),Math.min(1,b[3]+p*.6)];
-    const T=TEMPLATE[r.company];
-    up.f.boxes=[{t:'g',b:ok(r.front?.gradeBox)?pad(r.front.gradeBox,.015):[...T.g]}];
-    const mf=(r.front?.serialBoxes||[]).filter(ok);(mf.length?mf:T.mf).forEach(b=>up.f.boxes.push({t:'m',b:pad(b,.012)}));
-    const mb=(r.back?.serialBoxes||[]).filter(ok);up.b.boxes=(mb.length?mb:T.mb).map(b=>({t:'m',b:pad(b,.012)}));
-    drawEditor();
-    if(r.pristine&&r.company==='CGC')$('gradeSel').value='P10';else if(typeof r.grade==='number')$('gradeSel').value=String(r.grade);
-    if(r.cardName)$('nameIn').value=String(r.cardName).slice(0,60);
-    const cd=r.condition||{};up.cond=[cd.centering&&`센터링 ${cd.centering}`,cd.corners&&`모서리 ${cd.corners}`,cd.edges&&`에지 ${cd.edges}`,cd.surface&&`표면 ${cd.surface}`].filter(Boolean).join(' · ').slice(0,300);
-    if([0,1,2].includes(r.tier)){up.rec=r.tier;up.tier=r.tier}renderTiers();
-    $('condTxt').textContent=(cd.summary?cd.summary+' ':'')+(r.tierReason?`(${r.tierReason})`:'');
-    const msg=`읽은 결과: ${r.company} ${r.pristine?'Pristine 10':r.grade??'등급 못 읽음'}. 라벨과 같은지 확인하고, 앞뒷면의 가림 칸이 등급·인증번호·QR을 다 덮는지 봐 주세요.`;
-    if(r.sameSlab===false){m.className='status err';m.textContent='앞면과 뒷면의 인증번호가 서로 달라 보여요. 같은 슬랩의 사진인지 확인해 주세요. '+msg}else{m.className='status ok';m.textContent=msg}
-    validate();
-  }catch{alertMsg('자동 인식에 실패했어요. '+manual)}
+function guide(){
+  const m=$('recog');m.className='status';
+  m.innerHTML=!up.company?'<b>먼저 그레이딩 회사를 고르세요.</b> 사진 위에 가림 칸이 기본 위치로 놓여요.'
+   :'<b>칸을 직접 맞춰 주세요.</b><br>① 노란 칸을 앞면 등급 숫자와 글자(예: 9 MINT) 위로<br>② 파란 칸을 앞면·뒷면의 인증번호, QR, 바코드 위로 (모자랄 땐 + 모자이크 영역)<br>③ 앞면·뒷면을 바꿔 가며 결과 미리보기로 번호가 안 읽히는지 확인';
 }
 function drawEditor(){
   const ed=$('editor');ed.innerHTML='';const S=up[up.side];ed.appendChild(S.canvas);
@@ -336,7 +286,7 @@ $('submitBtn').onclick=async()=>{
     const id=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
     const fp=`pending/${id}-f.jpg`,bp=`pending/${id}-b.jpg`;
     for(const [path,S] of [[fp,up.f],[bp,up.b]]){const {error}=await sb.storage.from('cards').upload(path,await toJpeg(bake(S)),{contentType:'image/jpeg',upsert:false});if(error)throw error}
-    const {error}=await sb.from('cards').insert({front_path:fp,back_path:bp,company:up.company,grade,pristine,tier:up.tier,box:g.b.map(n=>+n.toFixed(4)),name:$('nameIn').value.trim().slice(0,60),cond:(AI?up.cond:($('condIn')?.value||'').trim()).slice(0,300),submitter:PID});
+    const {error}=await sb.from('cards').insert({front_path:fp,back_path:bp,company:up.company,grade,pristine,tier:up.tier,box:g.b.map(n=>+n.toFixed(4)),name:$('nameIn').value.trim().slice(0,60),cond:($('condIn')?.value||'').trim().slice(0,300),submitter:PID});
     if(error)throw error;
     msg.className='status ok';msg.textContent='올렸어요. 운영자가 확인하면 문제로 나옵니다.';setTimeout(()=>$('cancelBtn').click(),1800);
   }catch{msg.className='status err';msg.textContent='올리지 못했어요. 잠시 뒤 다시 시도해 주세요.';btn.disabled=false}
