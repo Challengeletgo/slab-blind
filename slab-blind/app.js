@@ -19,6 +19,7 @@ const TEMPLATE={
 
 /* ---------- 서버 연결 (Supabase) ---------- */
 const CFG=window.SLAB_CONFIG||{};
+const AI=!!CFG.RECOGNITION; // Claude API 키를 넣었을 때만 true
 const sb=(CFG.SUPABASE_URL&&CFG.SUPABASE_ANON_KEY&&window.supabase)?window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY):null;
 const imgUrl=p=>`${CFG.SUPABASE_URL}/storage/v1/object/public/cards/${p}`;
 function playerId(){let id=null;try{id=localStorage.getItem('slab_pid')}catch{}
@@ -113,7 +114,7 @@ async function answer(val,btn){
   r.innerHTML=`<div class="verdict"><strong style="color:${ok?'var(--good)':'var(--bad)'}">${ok?'정답':timeout?'시간 초과':'게임 오버'}</strong><span class="pts">${ok?'+'+gained:''}</span></div>
   <div style="font-size:14px">정답 <b style="font-family:var(--mono)">${c.company} ${gradeLabel(c)}</b></div>
   ${c.name?`<div style="font-size:13px;color:var(--muted)">${esc(c.name)}${c.seed?'':' · 커뮤니티 제보'}</div>`:''}
-  ${c.cond?`<div class="cond">AI가 본 상태: ${esc(c.cond)}</div>`:''}
+  ${c.cond?`<div class="cond">카드 메모: ${esc(c.cond)}</div>`:''}
   <button class="primary" id="nextBtn">${ok?'다음 카드':'결과 보기'}</button>`;
   r.hidden=false;$('nextBtn').onclick=()=>ok?next():finish('over');
   if(matchMedia('(max-width:760px)').matches)setTimeout(()=>r.scrollIntoView({behavior:'smooth',block:'end'}),200);
@@ -226,23 +227,52 @@ COMPANIES.forEach(c=>{const b=document.createElement('button');b.textContent=c;b
 function setCompany(c){up.company=c;for(const b of $('coSeg').children)b.setAttribute('aria-pressed',b.textContent===c);gradeOptions(c);validate()}
 function renderTiers(){const t=$('tierSeg');t.innerHTML='';
   LEVELS.forEach((L,i)=>{const b=document.createElement('button');b.type='button';b.setAttribute('aria-pressed',up.tier===i);
-    b.innerHTML=`<span>${L.name}용<small>${L.how}</small></span>${up.rec===i?'<span class="rec">AI 추천</span>':''}`;b.onclick=()=>{up.tier=i;renderTiers();validate()};t.appendChild(b)})}
-function applyTemplate(c){const t=TEMPLATE[c];up.f.boxes=[{t:'g',b:[...t.g]},...t.mf.map(b=>({t:'m',b:[...b]}))];up.b.boxes=t.mb.map(b=>({t:'m',b:[...b]}));drawEditor()}
+    b.innerHTML=`<span>${L.name}용<small>${L.how}</small></span>${up.rec===i?`<span class="rec">${AI?'AI 추천':'추천'}</span>`:''}`;b.onclick=()=>{up.tier=i;up.tierPicked=true;renderTiers();validate()};t.appendChild(b)})}
+function applyTemplate(c){const t=TEMPLATE[c];
+  // 자동으로 찾은 QR·바코드가 있으면 그 위치를 쓰고, 없으면 회사별 기본 위치를 씁니다.
+  const fc=up.f.codes||[],bc=up.b.codes||[];
+  up.f.boxes=[{t:'g',b:[...t.g]},...t.mf.map(b=>({t:'m',b:[...b]})),...fc.map(b=>({t:'m',b}))];
+  up.b.boxes=[...(bc.length?t.mb.slice(1):t.mb).map(b=>({t:'m',b:[...b]})),...bc.map(b=>({t:'m',b}))];drawEditor()}
 function validate(){const ok=up&&up.company&&$('gradeSel').value&&up.tier!=null&&$('own').checked&&up.f.boxes.some(b=>b.t==='g')&&!!sb;$('submitBtn').disabled=!ok}
-$('gradeSel').onchange=validate;$('own').onchange=validate;
+$('gradeSel').onchange=()=>{if(!AI&&up){const v=$('gradeSel').value;if(v){const g=v==='P10'?10:parseFloat(v);
+  up.rec=(v==='P10'||!Number.isInteger(g))?2:g>=9?1:0;if(!up.tierPicked)up.tier=up.rec;renderTiers()}}validate()};$('own').onchange=validate;
 $('cancelBtn').onclick=()=>{up=null;files={f:null,b:null};$('dropF').innerHTML='<b>앞면</b><span style="font-size:13px;color:var(--muted)">라벨 등급이 보이게</span>';$('dropB').innerHTML='<b>뒷면</b><span style="font-size:13px;color:var(--muted)">같은 슬랩의 뒷면</span>';$('nextUp').disabled=true;$('upStep2').hidden=true;$('upStep1').hidden=false};
 async function toSide(file){const img=await loadImg(URL.createObjectURL(file));const c=document.createElement('canvas');const sc=Math.min(1,1400/img.naturalHeight);
   c.width=Math.round(img.naturalWidth*sc);c.height=Math.round(img.naturalHeight*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);return{canvas:c,boxes:[]}}
 $('nextUp').onclick=async()=>{
-  try{up={f:await toSide(files.f),b:await toSide(files.b),side:'f',company:null,tier:null,rec:null,cond:'',recognized:false}}catch{return}
-  $('upStep1').hidden=true;$('upStep2').hidden=false;$('submitMsg').hidden=true;$('own').checked=false;$('nameIn').value='';$('condTxt').textContent='';
+  try{up={f:await toSide(files.f),b:await toSide(files.b),side:'f',company:null,tier:null,rec:null,cond:'',recognized:false,tierPicked:false}}catch{return}
+  $('upStep1').hidden=true;$('upStep2').hidden=false;$('submitMsg').hidden=true;$('own').checked=false;$('nameIn').value='';$('condTxt').innerHTML=AI?'':'<input type="text" id="condIn" maxlength="120" placeholder="내가 본 상태 (선택) 예: 왼쪽 위 모서리에 작은 흰 점" style="margin-top:4px">';
   for(const b of $('coSeg').children)b.setAttribute('aria-pressed','false');gradeOptions(null);renderTiers();setEditSide('f');validate();recognize();
 };
 function setEditSide(s){up.side=s;$('eF').setAttribute('aria-pressed',s==='f');$('eB').setAttribute('aria-pressed',s==='b');drawEditor()}
 $('eF').onclick=()=>setEditSide('f');$('eB').onclick=()=>setEditSide('b');
 function alertMsg(t){const m=$('recog');m.className='status err';m.textContent=t}
 function b64Of(c){const s=document.createElement('canvas');const k=Math.min(1,1100/c.height);s.width=Math.round(c.width*k);s.height=Math.round(c.height*k);s.getContext('2d').drawImage(c,0,0,s.width,s.height);return s.toDataURL('image/jpeg',.85).split(',')[1]}
+/* ---------- 무료 자동 감지: QR·바코드 (API 키 필요 없음) ---------- */
+let jsqrP=null;
+function loadJsQR(){if(window.jsQR)return Promise.resolve();if(!jsqrP)jsqrP=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';s.onload=res;s.onerror=rej;document.head.appendChild(s)});return jsqrP}
+async function findCodes(c){
+  const W=c.width,H=c.height,out=[],pad=.015;
+  const push=(x0,y0,x1,y1)=>{const b=[Math.max(0,x0/W-pad),Math.max(0,y0/H-pad),Math.min(1,x1/W+pad),Math.min(1,y1/H+pad)];if(!out.some(o=>Math.abs(o[0]-b[0])<.03&&Math.abs(o[1]-b[1])<.03))out.push(b)};
+  if('BarcodeDetector' in window){try{const d=new BarcodeDetector();for(const r of await d.detect(c)){const bb=r.boundingBox;push(bb.x,bb.y,bb.x+bb.width,bb.y+bb.height)}}catch{}}
+  try{await loadJsQR();
+    // 라벨이 있는 위쪽 30%만 크게 확대해서 찾습니다.
+    const h=Math.round(H*.3),t=document.createElement('canvas'),k=Math.min(2,1600/W);t.width=Math.round(W*k);t.height=Math.round(h*k);
+    const x=t.getContext('2d',{willReadFrequently:true});x.drawImage(c,0,0,W,h,0,0,t.width,t.height);
+    const q=window.jsQR(x.getImageData(0,0,t.width,t.height).data,t.width,t.height,{inversionAttempts:'attemptBoth'});
+    if(q){const p=q.location,xs=[p.topLeftCorner.x,p.topRightCorner.x,p.bottomLeftCorner.x,p.bottomRightCorner.x].map(v=>v/k),ys=[p.topLeftCorner.y,p.topRightCorner.y,p.bottomLeftCorner.y,p.bottomRightCorner.y].map(v=>v/k);push(Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys))}
+  }catch{}
+  return out;
+}
+async function localDetect(){
+  const m=$('recog');m.className='status';m.textContent='QR·바코드를 찾는 중…';
+  up.f.codes=await findCodes(up.f.canvas);up.b.codes=await findCodes(up.b.canvas);
+  const n=up.f.codes.length+up.b.codes.length;
+  m.textContent=(n?`QR·바코드 ${n}개를 찾아 모자이크 칸을 놓았어요. `:'')+'회사를 고르면 등급 가림 칸과 인증번호 모자이크 칸이 기본 위치에 놓여요. 라벨에 맞게 끌어서 맞춰 주세요.';
+  up.b.boxes=up.b.codes.map(b=>({t:'m',b}));up.f.boxes=up.f.codes.map(b=>({t:'m',b}));drawEditor();
+}
 async function recognize(){
+  if(!AI)return localDetect();
   const m=$('recog');m.className='status';m.textContent='라벨과 카드 상태를 읽는 중…';
   const manual='회사, 등급, 단계를 직접 고르면 기본 위치에 가림 칸이 놓여요. 라벨에 맞게 옮겨 주세요.';
   try{
@@ -306,7 +336,7 @@ $('submitBtn').onclick=async()=>{
     const id=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
     const fp=`pending/${id}-f.jpg`,bp=`pending/${id}-b.jpg`;
     for(const [path,S] of [[fp,up.f],[bp,up.b]]){const {error}=await sb.storage.from('cards').upload(path,await toJpeg(bake(S)),{contentType:'image/jpeg',upsert:false});if(error)throw error}
-    const {error}=await sb.from('cards').insert({front_path:fp,back_path:bp,company:up.company,grade,pristine,tier:up.tier,box:g.b.map(n=>+n.toFixed(4)),name:$('nameIn').value.trim().slice(0,60),cond:up.cond||'',submitter:PID});
+    const {error}=await sb.from('cards').insert({front_path:fp,back_path:bp,company:up.company,grade,pristine,tier:up.tier,box:g.b.map(n=>+n.toFixed(4)),name:$('nameIn').value.trim().slice(0,60),cond:(AI?up.cond:($('condIn')?.value||'').trim()).slice(0,300),submitter:PID});
     if(error)throw error;
     msg.className='status ok';msg.textContent='올렸어요. 운영자가 확인하면 문제로 나옵니다.';setTimeout(()=>$('cancelBtn').click(),1800);
   }catch{msg.className='status err';msg.textContent='올리지 못했어요. 잠시 뒤 다시 시도해 주세요.';btn.disabled=false}
