@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>슬랩 블라인드</title>
+<meta name="description" content="라벨 가린 그레이딩 슬랩, 몇 등급일까? 한 번 틀리면 끝나는 포켓몬 카드 등급 맞히기 게임.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="슬랩 블라인드 · 몇 등급일까?">
+<meta property="og:description" content="라벨 가린 슬랩의 등급을 맞혀 보세요. 한 번 틀리면 끝, 실시간 랭킹.">
+<meta property="og:image" content="og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#e6e9ee">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="logo">슬랩 블라인드</h1>
+    <div class="tabs" role="group" aria-label="화면">
+      <button id="tHome" aria-pressed="true">게임</button>
+      <button id="tUp" aria-pressed="false">카드 올리기</button>
+    </div>
+  </header>
+
+  <!-- HOME -->
+  <section id="vHome">
+    <div class="home">
+      <div>
+        <div class="hero">라벨 가린 슬랩,<br><mark>몇 등급일까?</mark></div>
+        <p class="lead">한 번 틀리면 끝. 맞힐수록 문제가 어려워져요. 내 눈에 맞는 단계부터 시작하세요.</p>
+        <div class="levels" id="levels"></div>
+        <div class="rules">
+          <span>· 4문제 연속으로 맞히면 다음 단계로 올라가요 (초보 → 중급 → 상급).</span>
+          <span>· 중급은 20초, 상급은 25초에서 시작해 문제마다 2초씩 줄어요.</span>
+          <span>· 앞면과 뒷면을 모두 볼 수 있어요. 등급과 인증번호·QR만 가렸습니다.</span>
+        </div>
+      </div>
+      <div class="board">
+        <h3>실시간 랭킹 <small id="liveDot"></small></h3>
+        <ol class="rank" id="rankHome"></ol>
+        <div style="font-size:12px;color:var(--muted)" id="meTag"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="vGame" hidden>
+    <div class="hud"><span class="chip" id="hStage"></span><span>연속 <b id="hStreak">0</b></span><span>점수 <b id="hScore">0</b></span><span>남은 카드 <b id="hLeft">0</b></span></div>
+    <div class="game">
+      <div>
+        <div class="sides"><div class="tabs" role="group" aria-label="카드 면"><button id="sF" aria-pressed="true">앞면</button><button id="sB" aria-pressed="false">뒷면</button></div></div>
+        <div class="stage" id="stage"><div class="photo" id="photo"></div>
+          <div class="loupe" id="loupe" hidden><canvas id="loupeCv" width="300" height="300"></canvas></div></div>
+      </div>
+      <div class="panel">
+        <div class="qhead"><h2 id="qText"></h2><div class="timer" id="timer" hidden><i id="timerBar"></i></div></div>
+        <div class="pad" id="pad"></div>
+        <div class="half" id="halfWrap" hidden><button id="halfBtn" aria-pressed="false">.5 등급 보기</button></div>
+        <div class="result" id="result" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GAME OVER -->
+  <section id="vOver" hidden>
+    <div class="over">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="color:var(--muted);font-weight:700" id="oHead">게임 오버</div>
+        <div class="big" id="oScore">0</div>
+        <div><span class="stamp" id="oTitle"></span></div>
+        <div style="font-size:14px" id="oSummary"></div>
+        <div class="log" id="oLog"></div>
+        <div class="cta" id="oCta"><div class="cta-txt" id="oCtaTxt"></div><button class="primary" id="ctaUp">내 카드로 문제 내기 →</button></div>
+        <label for="share" style="font-size:13px;color:var(--muted);margin-top:6px">공유용 문구</label>
+        <textarea id="share" readonly></textarea>
+        <div class="row"><button class="primary" id="retryBtn">같은 단계로 다시</button><button class="ghost" id="homeBtn">단계 바꾸기</button><button class="ghost" id="copyBtn">문구 복사</button></div>
+      </div>
+      <div class="board">
+        <h3>실시간 랭킹 <small></small></h3>
+        <div class="status" id="saveMsg" hidden></div>
+        <ol class="rank" id="rankOver"></ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- UPLOAD -->
+  <section id="vUp" hidden>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div><div class="h2">내 카드를 문제로 내기</div>
+        <p class="lead">PSA · CGC · BRG 슬랩만 받아요. 앞면과 뒷면을 함께 올려 주세요. 인증번호, 바코드, QR은 저장 전에 모자이크로 지워지고 원본 사진은 서버로 가지 않아요. 운영자가 확인한 뒤 문제로 나옵니다.</p></div>
+      <div id="upOff" class="status" hidden>지금은 카드 올리기를 준비 중이에요.</div>
+      <div id="upStep1">
+        <div class="drops">
+          <label class="drop" id="dropF" for="fileF" tabindex="0"><b>앞면</b><span style="font-size:13px;color:var(--muted)">라벨 등급이 보이게</span></label>
+          <label class="drop" id="dropB" for="fileB" tabindex="0"><b>뒷면</b><span style="font-size:13px;color:var(--muted)">같은 슬랩의 뒷면</span></label>
+        </div>
+        <input type="file" id="fileF" accept="image/*" hidden><input type="file" id="fileB" accept="image/*" hidden>
+        <div class="row" style="margin-top:12px"><button class="primary" id="nextUp" disabled>사진 읽기</button></div>
+      </div>
+      <div class="up" id="upStep2" hidden>
+        <div>
+          <div class="sides"><div class="tabs" role="group" aria-label="편집할 면"><button id="eF" aria-pressed="true">앞면</button><button id="eB" aria-pressed="false">뒷면</button></div></div>
+          <div class="editor" id="editor"></div>
+          <div class="row" style="margin-top:10px;justify-content:center">
+            <button class="ghost" id="addMosaic">+ 모자이크 영역</button>
+            <button class="ghost" id="previewBtn">결과 미리보기</button>
+          </div>
+          <p class="hint">노란 칸은 문제에서 테이프로 가릴 등급, 파란 칸은 영구 모자이크될 인증번호·바코드·QR이에요. 끌어서 옮기고 오른쪽 아래 점으로 크기를 바꾸세요. 앞면과 뒷면을 모두 확인해 주세요.</p>
+        </div>
+        <div class="form">
+          <div class="status" id="recog">사진을 읽는 중…</div>
+          <div class="field"><span>그레이딩 회사</span><div class="seg" id="coSeg"></div></div>
+          <div class="field"><span>등급</span><select id="gradeSel"></select></div>
+          <div class="field"><span>카드 이름 (선택)</span><input type="text" id="nameIn" placeholder="예: Mew VMAX · 2023 S12a 한국판" maxlength="60"></div>
+          <div class="field"><span>어느 단계 문제로 낼까요?</span><div class="tiers" id="tierSeg"></div><div id="condTxt" style="font-size:12.5px;color:var(--muted)"></div></div>
+          <label class="check"><input type="checkbox" id="own"> 제가 가진 카드를 직접 찍은 사진이거나, 사진 주인에게 허락을 받았어요.</label>
+          <button class="primary" id="submitBtn" disabled>문제로 올리기</button>
+          <button class="ghost" id="cancelBtn">처음부터 다시</button>
+          <div class="status" id="submitMsg" hidden></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

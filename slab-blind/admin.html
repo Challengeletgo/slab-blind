@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>슬랩 블라인드 · 운영자</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>운영자 검토</h1>
+    <div class="tabs" role="group" aria-label="목록">
+      <button id="tP" aria-pressed="true">검토 대기 <span class="count" id="nP">0</span></button>
+      <button id="tA" aria-pressed="false">문제 풀</button>
+      <button id="out" hidden>로그아웃</button>
+    </div>
+  </header>
+
+  <section id="login" style="max-width:380px;display:flex;flex-direction:column;gap:10px">
+    <p class="lead">Supabase에서 만든 운영자 계정으로 로그인하세요.</p>
+    <input type="text" id="email" placeholder="이메일" autocomplete="username">
+    <input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password">
+    <button class="primary" id="loginBtn">로그인</button>
+    <div class="status" id="loginMsg" hidden></div>
+  </section>
+
+  <section id="list" hidden>
+    <p class="lead" id="lead" style="margin-bottom:14px"></p>
+    <div class="queue" id="queue"></div>
+  </section>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const C=window.SLAB_CONFIG||{};
+if(!C.SUPABASE_URL||!C.SUPABASE_ANON_KEY){$('login').innerHTML='<div class="status err">config.js에 Supabase 주소와 키를 먼저 넣어 주세요.</div>';return}
+const sb=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_ANON_KEY);
+const url=p=>`${C.SUPABASE_URL}/storage/v1/object/public/cards/${p}`;
+const LV=['초보','중급','상급'];
+let mode='pending';
+
+$('loginBtn').onclick=async()=>{const m=$('loginMsg');m.hidden=false;m.className='status';m.textContent='로그인 중…';
+  const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('pw').value});
+  if(error){m.className='status err';m.textContent='로그인하지 못했어요. 이메일과 비밀번호를 확인해 주세요.';return}boot()};
+$('out').onclick=async()=>{await sb.auth.signOut();location.reload()};
+$('tP').onclick=()=>{mode='pending';load()};$('tA').onclick=()=>{mode='approved';load()};
+
+async function boot(){const {data}=await sb.auth.getSession();if(!data.session)return;
+  $('login').hidden=true;$('list').hidden=false;$('out').hidden=false;load()}
+
+async function load(){
+  $('tP').setAttribute('aria-pressed',mode==='pending');$('tA').setAttribute('aria-pressed',mode==='approved');
+  $('lead').textContent=mode==='pending'?'라벨의 회사·등급과 입력값이 같은지, 앞뒷면 인증번호와 QR이 잘 가려졌는지 확인하고 승인하세요.':'지금 문제로 나가는 제보 카드예요. 문제가 있으면 내릴 수 있어요. (기본 카드 10장은 여기 없어요.)';
+  const q=$('queue');q.innerHTML='<div class="empty">불러오는 중…</div>';
+  const {data,error}=await sb.from('cards').select('*').eq('status',mode).order('created_at',{ascending:false}).limit(200);
+  if(error){q.innerHTML='<div class="empty">불러오지 못했어요. 이 계정이 운영자 목록(admins)에 있는지 확인해 주세요.</div>';return}
+  const {count}=await sb.from('cards').select('id',{count:'exact',head:true}).eq('status','pending');$('nP').textContent=count??0;
+  q.innerHTML=data.length?'':`<div class="empty">${mode==='pending'?'검토할 카드가 없어요.':'아직 승인한 카드가 없어요.'}</div>`;
+  for(const it of data){const el=document.createElement('div');el.className='qitem';
+    el.innerHTML=`<div class="pair"><a href="${url(it.front_path)}" target="_blank" rel="noopener"><img alt="앞면" src="${url(it.front_path)}"></a><a href="${url(it.back_path)}" target="_blank" rel="noopener"><img alt="뒷면" src="${url(it.back_path)}"></a></div>
+      <div><b>${esc(it.company)} ${it.pristine?'Pristine 10':esc(it.grade)}</b><div style="font-size:12.5px;color:var(--muted)">${esc(it.name||'이름 없음')}</div>${it.cond?`<div style="font-size:12px;color:var(--muted)">${esc(it.cond)}</div>`:''}<div style="font-size:11px;color:var(--muted)">${new Date(it.created_at).toLocaleString('ko-KR')}</div></div>
+      <select aria-label="문제 단계">${LV.map((n,i)=>`<option value="${i}"${i===it.tier?' selected':''}>${n}용</option>`).join('')}</select>
+      <div class="row">${mode==='pending'?'<button class="primary" data-a="ok" style="flex:1;padding:9px">승인</button><button class="ghost" data-a="no" style="flex:1">반려</button>':'<button class="ghost" data-a="tier" style="flex:1">단계 저장</button><button class="ghost" data-a="no" style="flex:1">문제에서 내리기</button>'}</div>`;
+    const sel=el.querySelector('select');
+    el.querySelectorAll('button').forEach(b=>b.onclick=async()=>{b.disabled=true;
+      const patch=b.dataset.a==='ok'?{status:'approved',tier:+sel.value}:b.dataset.a==='no'?{status:'rejected'}:{tier:+sel.value};
+      const {error}=await sb.from('cards').update(patch).eq('id',it.id);
+      if(error){b.disabled=false;b.textContent='실패';return}
+      if(b.dataset.a==='tier'){b.textContent='저장됨';b.disabled=false;return}
+      el.remove();if(!q.children.length)load()});
+    q.appendChild(el)}
+}
+boot();
+})();
+</script>
+</body>
+</html>
