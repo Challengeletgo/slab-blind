@@ -8,8 +8,8 @@ const SEED=[{"f":"seed/1f.jpg","b":"seed/1b.jpg","company":"BRG","grade":9,"name
 const COMPANIES=['PSA','CGC','BRG'];
 const GNAME={10:'GEM MT',9:'MINT',8:'NM-MT',7:'NM',6:'EX-MT',5:'EX',4:'VG-EX',3:'VG',2:'GOOD',1:'POOR'};
 const LEVELS=[
-  {name:'초보',desc:'카드 보는 눈이 아직 없어요',how:'두 등급 중 하나 고르기',q:'둘 중 몇 등급일까?',pts:10},
-  {name:'중급',desc:'10점짜리는 어느 정도 알아봐요',how:'10등급인지 아닌지 맞히기',q:'이 카드, 10등급일까?',pts:20},
+  {name:'초보',desc:'카드 보는 눈이 아직 없어요',how:'가까운 등급 3개 중 고르기',q:'세 등급 중 정답은?',pts:10},
+  {name:'중급',desc:'10점짜리는 어느 정도 알아봐요',how:'.5 단위 포함 5개 중 고르기 · 시간 제한',q:'다섯 등급 중 정답은?',pts:20},
   {name:'상급',desc:'숫자까지 맞힐 자신 있어요',how:'정확한 등급 고르기 · 시간 제한',q:'정확히 몇 등급?',pts:40}];
 const gradeLabel=c=>c.pristine?'PRISTINE 10':`${c.grade} ${GNAME[Math.floor(c.grade)]||''}`.trim();
 const TEMPLATE={
@@ -80,20 +80,26 @@ function next(){
   startTimer(stage===0?0:stage===1?20:Math.max(8,25-2*run.k2));
 }
 function truthKey(c){return c.pristine?'P10':String(c.grade)}
+function ladder(co,half,c){ // 낮은 등급 → 높은 등급
+  const L=[];for(let g=1;g<=10;g+=half?.5:1){if(co==='PSA'&&g===9.5)continue;L.push(String(g))}
+  if(co==='CGC')L.push('P10');
+  const k=truthKey(c);if(!L.includes(k)){L.push(k);L.sort((a,b)=>(a==='P10'?10.75:+a)-(b==='P10'?10.75:+b))}
+  return L}
 function buildPad(){
   const pad=$('pad'),st=run.stage;pad.innerHTML='';$('halfWrap').hidden=true;
-  if(st===0){
-    const t=cur.pristine?10:cur.grade,gaps=run.streak<2?[2]:[1,2],floor=Math.min(5,Math.floor(t)-2);
-    const cands=[];for(let g=1;g<=10;g++)if(gaps.includes(Math.abs(g-t))&&g>=floor)cands.push(g);
-    const ups=cands.filter(g=>g>t),downs=cands.filter(g=>g<t);
-    const d=(ups.length&&(Math.random()<.5||!downs.length))?pickOne(ups):pickOne(downs);
-    pad.className='pad two';
-    for(const v of shuffle([truthKey(cur),String(d)]))pad.appendChild(mkBtn(`${v==='P10'?'P10':v}<small>${v==='P10'?'PRISTINE':GNAME[Math.floor(+v)]||''}</small>`,v));
-  }else if(st===1){
-    pad.className='pad two';
-    pad.appendChild(mkBtn('10 맞다<small>GEM MINT 이상</small>','yes'));pad.appendChild(mkBtn('10 아니다<small>9 이하</small>','no'));
+  if(st<2){
+    // 정답이 들어 있는 '연속된 등급' 묶음에서 보기 고르기 (정답 위치는 무작위)
+    const n=st===0?3:5,half=st===1,lad=ladder(cur.company,half,cur);
+    const ti=lad.indexOf(truthKey(cur));
+    // 정답이 보기의 맨 위·맨 아래에 고정되지 않게 (사다리 끝일 때만 예외)
+    const los=[];for(let l=Math.max(0,ti-n+1);l<=Math.min(ti,lad.length-n);l++){const r=ti-l;
+      if((r===n-1&&ti!==lad.length-1)||(r===0&&ti!==0))continue;los.push(l)}
+    const lo=los.length?pickOne(los):Math.max(0,Math.min(lad.length-n,ti-1));
+    const opts=lad.slice(lo,lo+n).reverse();
+    pad.className='pad ten';pad.style.gridTemplateColumns=`repeat(${opts.length},minmax(0,1fr))`;
+    for(const v of opts)pad.appendChild(mkBtn(`${v==='P10'?'P10':v}<small>${v==='P10'?'PRISTINE':Number.isInteger(+v)?GNAME[+v]:''}</small>`,v));
   }else{
-    pad.className='pad ten';$('halfWrap').hidden=false;$('halfBtn').setAttribute('aria-pressed',halfOn);$('halfBtn').textContent=halfOn?'정수 등급 보기':'.5 등급 보기';
+    pad.className='pad ten';pad.style.gridTemplateColumns='';$('halfWrap').hidden=false;$('halfBtn').setAttribute('aria-pressed',halfOn);$('halfBtn').textContent=halfOn?'정수 등급 보기':'.5 등급 보기';
     if(cur.company==='CGC'&&!halfOn){const b=mkBtn('PRISTINE 10 <small>CGC 최상위</small>','P10');b.classList.add('wide');pad.appendChild(b)}
     const list=halfOn?[9.5,8.5,7.5,6.5,5.5,4.5,3.5,2.5,1.5].filter(g=>!(cur.company==='PSA'&&g===9.5)):[10,9,8,7,6,5,4,3,2,1];
     for(const g of list)pad.appendChild(mkBtn(`${g}<small>${halfOn?'':GNAME[g]}</small>`,String(g)));
@@ -101,12 +107,12 @@ function buildPad(){
 }
 $('halfBtn').onclick=()=>{if(answered)return;halfOn=!halfOn;buildPad()};
 function mkBtn(html,val){const b=document.createElement('button');b.innerHTML=html;b.dataset.v=val;b.onclick=()=>answer(val,b);return b}
-function isRight(val,c){if(val==null)return false;if(run.stage===1)return (val==='yes')===(c.grade>=10);return val===truthKey(c)}
+function isRight(val,c){return val!=null&&val===truthKey(c)}
 async function answer(val,btn){
   if(answered)return;answered=true;const remain=stopTimer();const c=cur,ok=isRight(val,c),st=run.stage;let gained=0;
   if(ok){gained=LEVELS[st].pts+(st>0?Math.ceil(remain):0);run.score+=gained;run.streak++;if(st===2)run.k2++}
   run.log.push({ok,st});$('hScore').textContent=run.score;$('hStreak').textContent=run.streak;
-  for(const b of $('pad').children){b.disabled=true;const v=b.dataset.v;if(st===1?((v==='yes')===(c.grade>=10)):v===truthKey(c))b.classList.add('truth')}
+  for(const b of $('pad').children){b.disabled=true;const v=b.dataset.v;if(v===truthKey(c))b.classList.add('truth')}
   btn?.classList.add('picked');
   await setSide('f');await reveal(c);
   const r=$('result');const timeout=val==null;
